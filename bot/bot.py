@@ -1,3 +1,4 @@
+import asyncio
 import requests
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
@@ -40,7 +41,7 @@ async def cmd_start(message: Message):
     print(f"Команда /start вызвана пользователем {user_id}")
     register_user_in_db(user_id)
     await message.answer(
-        "Привет! Я бот для изучения английского по карточкам. Используй команды для взаимодействия со мной.")
+        "Привет! Я бот для изучения английского по карточкам.")
     await send_word(message)
 
 
@@ -101,4 +102,4 @@ async def main():
 
 # Запуск бота
 if __name__ == '__main__':
-    await main()
+    asyncio.run(main())
