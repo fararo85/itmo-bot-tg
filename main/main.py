@@ -39,10 +39,14 @@ async def register_user(user_id: int):
 
     return {"message": "Пользователь успешно зарегистрирован"}
 
-# Получение следующего слова для пользователя
+# Получение следующего слова для пользователя с учётом статуса reviewlater
 @app.get("/user/{user_id}/next_word")
-async def get_next_word(user_id: int):
-    response = supabase.table("user_words").select("word_id").match({"user_id": user_id, "status": "unknown"}).limit(10).execute()
+async def get_next_word(user_id: int, include_reviewlater: bool = False):
+    statuses = ["unknown"]
+    if include_reviewlater:
+        statuses.append("reviewlater")  # Добавляем статус review_later
+
+    response = supabase.table("user_words").select("word_id").match({"user_id": user_id}).in_("status", statuses).limit(10).execute()
     if hasattr(response, 'error'):
         raise HTTPException(status_code=500, detail=f"Ошибка при запросе: {response.error}")
     if not response.data:
@@ -68,5 +72,24 @@ async def update_word_status(user_id: int, word_id: int, status: str):
     if hasattr(response, 'error'):
         raise HTTPException(status_code=500, detail=f"Ошибка обновления статуса слова: {response.error}")
     return {"message": "Статус слова успешно обновлен"}
+
+
+# Получение всех изученных слов для пользователя
+@app.get("/user/{user_id}/learned_words")
+async def get_learned_words(user_id: int):
+    response = supabase.table("user_words").select("word_id").match({"user_id": user_id, "status": "known"}).execute()
+    if hasattr(response, 'error'):
+        raise HTTPException(status_code=500, detail=f"Ошибка при запросе: {response.error}")
+    if not response.data:
+        return {"learned_words": []}
+
+    # Получаем слова по их ID из таблицы `words`
+    word_ids = [entry["word_id"] for entry in response.data]
+    words_response = supabase.table("words").select("word", "translation").in_("id", word_ids).execute()
+
+    if hasattr(words_response, 'error'):
+        raise HTTPException(status_code=500, detail=f"Ошибка получения слов: {words_response.error}")
+
+    return {"learned_words": words_response.data}
 
 uvicorn.run(app, host="0.0.0.0", port=8000)
