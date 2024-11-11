@@ -53,7 +53,11 @@ async def cmd_learned_words(message: Message):
         await message.answer("Ошибка получения списка изученных слов.")
         return
 
-    learned_words = response.json()
+    learned_words_data = response.json()
+
+    # Проверка наличия ключа 'learned_words' в JSON-ответе
+    learned_words = learned_words_data.get("learned_words", [])
+
     if not learned_words:
         await message.answer("Вы пока не выучили ни одного слова.")
         return
