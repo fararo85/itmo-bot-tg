@@ -2,7 +2,6 @@ import asyncio
 import requests
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-import asyncio
 import os
 
 API_URL = "http://localhost:8000"  # URL вашего API
@@ -16,8 +15,7 @@ dp = Dispatcher()
 async def set_my_commands(bot: Bot):
     commands = [
         BotCommand(command="/start", description="Начать изучение слов"),
-        # BotCommand(command="/help", description="Помощь по командам"),
-        # BotCommand(command="/settings", description="Настройки бота"),
+        BotCommand(command="/learned_words", description="Просмотреть изученные слова"),
     ]
     await bot.set_my_commands(commands)
 
@@ -40,16 +38,36 @@ async def cmd_start(message: Message):
     user_id = message.from_user.id
     print(f"Команда /start вызвана пользователем {user_id}")
     register_user_in_db(user_id)
-    await message.answer(
-        "Привет! Я бот для изучения английского по карточкам.")
+    await message.answer("Привет! Я бот для изучения английского по карточкам.")
     await send_word(message)
+
+
+# Обработчик команды /learned_words для просмотра списка изученных слов
+@dp.message(F.text == "/learned_words")
+async def cmd_learned_words(message: Message):
+    user_id = message.from_user.id
+    response = requests.get(f"{API_URL}/user/{user_id}/learned_words")
+    print(f"Запрос на получение изученных слов для пользователя {user_id}, статус: {response.status_code}")
+
+    if response.status_code != 200:
+        await message.answer("Ошибка получения списка изученных слов.")
+        return
+
+    learned_words = response.json()
+    if not learned_words:
+        await message.answer("Вы пока не выучили ни одного слова.")
+        return
+
+    words_list = "\n".join([f"{word['word']} - {word['translation']}" for word in learned_words])
+    await message.answer(f"Ваши изученные слова:\n{words_list}")
 
 
 # Функция для отправки карточки со словом
 async def send_word(message: Message, user_id=None):
     if user_id is None:
         user_id = message.from_user.id
-    response = requests.get(f"{API_URL}/user/{user_id}/next_word")
+    # Запрос теперь будет учитывать слова со статусом `unknown` и `reviewlater`
+    response = requests.get(f"{API_URL}/user/{user_id}/next_word?include_reviewlater=true")
     print(f"Запрос на получение слова для пользователя {user_id}, статус: {response.status_code}")
 
     if response.status_code == 404:
@@ -68,18 +86,25 @@ async def send_word(message: Message, user_id=None):
     word, translation, word_id = word_data['word'], word_data['translation'], word_data['id']
     buttons = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Знаю", callback_data=f"know_{word_id}")],
-        [InlineKeyboardButton(text="Не знаю", callback_data=f"don'tknow_{word_id}")]
+        [InlineKeyboardButton(text="Не знаю", callback_data=f"don'tknow_{word_id}")],
+        [InlineKeyboardButton(text="Знаю, но хочу повторить позже", callback_data=f"reviewlater_{word_id}")]
     ])
     await message.answer(f"{word} - {translation}", reply_markup=buttons)
 
 
 # Обработка ответов пользователя
-@dp.callback_query(F.data.startswith("know") | F.data.startswith("don'tknow"))
+@dp.callback_query(F.data.startswith("know") | F.data.startswith("don'tknow") | F.data.startswith("reviewlater"))
 async def handle_response(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     action, word_id = callback_query.data.split('_')
 
-    status = "known" if action == "know" else "unknown"
+    if action == "know":
+        status = "known"
+    elif action == "don'tknow":
+        status = "unknown"
+    elif action == "reviewlater":
+        status = "reviewlater"
+
     update_response = requests.put(f"{API_URL}/user/{user_id}/word/{word_id}?status={status}", json={"status": status})
     print(f"Обновление статуса слова {word_id} для пользователя {user_id}, статус: {update_response.status_code}")
 
@@ -88,7 +113,13 @@ async def handle_response(callback_query: CallbackQuery):
         await callback_query.answer("Ошибка при обновлении статуса слова.")
         return
 
-    await callback_query.answer("Слово помечено как выучено!" if action == "know" else "Слово будет показано снова.")
+    response_text = {
+        "know": "Слово помечено как выучено!",
+        "don'tknow": "Слово будет показано снова.",
+        "reviewlater": "Слово будет повторено позже."
+    }.get(action, "Ответ сохранён.")
+
+    await callback_query.answer(response_text)
     await callback_query.message.edit_text("Отлично! Давайте продолжим.")
     await send_word(callback_query.message, user_id)
 
