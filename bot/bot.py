@@ -5,7 +5,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 import asyncio
 import os
 
-API_URL = "http://main:8000"  # URL вашего API
+API_URL = "http://localhost:8000"  # URL вашего API
 BOT_TOKEN = "8028109506:AAHZW9NWG1UsDChaISZTlanB96H5h3RDapk"  # Убедитесь, что токен настроен
 
 bot = Bot(token=BOT_TOKEN)
